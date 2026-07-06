@@ -6,7 +6,7 @@ External uptime monitor for [regimevault.com](https://regimevault.com), running 
 
 - A scheduled workflow (`.github/workflows/uptime.yml`) runs every 10 minutes.
 - It fetches `https://regimevault.com/api/health` (3 attempts, 30 s apart) from GitHub runners.
-- Site state (`up`/`down`) is persisted in the repo variable `SITE_STATUS`.
+- Site state (`up`/`down`) is persisted in the `state` file, committed on each transition.
 - On a state **transition** (up→down or down→up), a Telegram alert is sent to the ops group. No spam while the state is stable.
 - A monthly keepalive commit prevents GitHub from auto-disabling the scheduled workflow after 60 days of repo inactivity.
 

@@ -7,8 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # keepalive (empty commit)
-  actions: write    # variable SITE_STATUS (etat up/down)
+  contents: write   # etat (fichier state) + keepalive
 
 concurrency:
   group: uptime
@@ -18,6 +17,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Check https://regimevault.com/api/health
         id: check
         run: |
@@ -36,10 +37,8 @@ jobs:
 
       - name: Load previous state
         id: prev
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          prev=$(gh api "repos/${{ github.repository }}/actions/variables/SITE_STATUS" --jq .value 2>/dev/null || echo "up")
+          prev=$(cat state 2>/dev/null || echo "up")
           echo "prev=$prev" >> "$GITHUB_OUTPUT"
           echo "previous status: $prev"
 
@@ -59,21 +58,19 @@ jobs:
             --data-urlencode text="$msg" > /dev/null
           echo "telegram alert sent (${{ steps.check.outputs.status }})"
 
-      - name: Save state
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Save state (commit on transition)
+        if: steps.check.outputs.status != steps.prev.outputs.prev
         run: |
-          s="${{ steps.check.outputs.status }}"
-          gh api -X PATCH "repos/${{ github.repository }}/actions/variables/SITE_STATUS" \
-            -f name=SITE_STATUS -f value="$s" 2>/dev/null \
-          || gh api -X POST "repos/${{ github.repository }}/actions/variables" \
-            -f name=SITE_STATUS -f value="$s"
+          echo "${{ steps.check.outputs.status }}" > state
+          git config user.name "rv-uptime-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state
+          git commit -m "state: ${{ steps.prev.outputs.prev }} -> ${{ steps.check.outputs.status }}"
+          git push
 
       - name: Keepalive (monthly empty commit)
         if: github.event.schedule == '17 3 1 * *'
         run: |
-          git clone --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ka
-          cd ka
           git config user.name "rv-uptime-bot"
           git config user.email "actions@users.noreply.github.com"
           git commit --allow-empty -m "keepalive: prevent scheduled workflow auto-disable"
